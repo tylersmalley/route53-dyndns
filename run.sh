@@ -1,11 +1,24 @@
 #!/bin/sh
+CURRENT_IP_ADDRESS=''
+
+echo "Checking for updates every $ROUTE53_UPDATE_FREQUENCY seconds"
 
 while :
 do
-	IP_ADDRESS=`curl -s ifconfig.co`
+	IP_ADDRESS=`curl -s api.ipify.org`
+
+	if [ "$IP_ADDRESS" == "$CURRENT_IP_ADDRESS" ]; then
+		printf "."
+		sleep $ROUTE53_UPDATE_FREQUENCY
+		continue
+	else
+		echo "Updated $ROUTE53_DOMAIN_A_RECORD to $IP_ADDRESS"
+		CURRENT_IP_ADDRESS=$IP_ADDRESS
+	fi
+
 	cat <<-EOF > /tmp/aws-route53-update.json
 		{
-			"Comment": "Update record to reflect new IP address of home router",
+			"Comment": "Update record to reflect new home IP address",
 			"Changes": [{
 				"Action": "UPSERT",
 				"ResourceRecordSet": {
@@ -20,9 +33,7 @@ do
 		}
 	EOF
 
-	# aws route53 change-resource-record-sets --hosted-zone-id=$ROUTE53_ZONE_ID --change-batch file:///tmp/aws-route53-update.json
-
-	echo "Updated $ROUTE53_DOMAIN_A_RECORD to $IP_ADDRESS"
-	echo "Sleeping for $ROUTE53_UPDATE_FREQUENCY seconds..."
-	sleep $ROUTE53_UPDATE_FREQUENCY
+	aws route53 change-resource-record-sets \
+		--hosted-zone-id=$ROUTE53_ZONE_ID \
+		--change-batch file:///tmp/aws-route53-update.json
 done
